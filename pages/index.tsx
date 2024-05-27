@@ -10,13 +10,14 @@ const API_URL = "http://localhost:5000/api";
 const localizer = momentLocalizer(moment);
 
 interface User {
-  id: number;
+  _id: string;
   name: string;
 }
 
 interface Task {
-  id: number;
+  _id: number;
   userId: number;
+
   title: string;
   start: string;
   end: string;
@@ -29,7 +30,8 @@ interface Availability {
 
 const App: React.FC = () => {
   const [name, setName] = useState<string>("");
-  const [userId, setUserId] = useState<number | null>(null);
+  const [password, setPassword] = useState<string>("");
+  const [userId, setUserId] = useState<string | null>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [availability, setAvailability] = useState<Availability[]>([]);
   const [showModal, setShowModal] = useState<boolean>(false);
@@ -54,18 +56,16 @@ const App: React.FC = () => {
   const [appointmentLink, setAppointmentLink] = useState<string>("");
 
   useEffect(() => {
-    const storedUserId = localStorage.getItem("userId");
-    if (storedUserId) {
-      axios
-        .get(`${API_URL}/user`, { params: { id: storedUserId } })
-        .then((response) => {
-          if (response.data.user) {
-            setUserId(Number(storedUserId));
-            setName(response.data.user.name);
-          } else {
-            setShowModal(true);
-          }
-        });
+    const token = localStorage.getItem("token");
+    if (token) {
+      axios.get(`${API_URL}/me`, { params: { token } }).then((response) => {
+        if (response.data.user) {
+          setUserId(response.data.user._id);
+          setName(response.data.user.username);
+        } else {
+          setShowModal(true);
+        }
+      });
     } else {
       setShowModal(true);
     }
@@ -81,7 +81,7 @@ const App: React.FC = () => {
   const fetchTasks = async () => {
     try {
       const response = await axios.get<Task[]>(`${API_URL}/tasks`, {
-        params: { userId },
+        params: { userId, token: localStorage.getItem("token") },
       });
       setTasks(response.data);
       console.log(response.data);
@@ -95,7 +95,7 @@ const App: React.FC = () => {
       const response = await axios.get<Availability[]>(
         `${API_URL}/availability`,
         {
-          params: { userId },
+          params: { userId, token: localStorage.getItem("token") },
         }
       );
       setAvailability(response.data);
@@ -104,11 +104,35 @@ const App: React.FC = () => {
     }
   };
 
-  const handleNameSubmit = async () => {
+  const handleRegisterSubmit = async () => {
     try {
-      const response = await axios.post<User>(`${API_URL}/users`, { name });
-      setUserId(response.data.id);
-      localStorage.setItem("userId", response.data.id.toString());
+      const response = await axios.post<{ user: User; token: string }>(
+        `${API_URL}/register`,
+        {
+          username: name,
+          password,
+        }
+      );
+      setUserId(response.data.user._id);
+      // Using local storage due to time constraints (i know how to do it with cookies)
+      localStorage.setItem("token", response.data.token.toString());
+      setShowModal(false);
+    } catch (error) {
+      console.error("Error creating user:", error);
+    }
+  };
+
+  const handleLoginSubmit = async () => {
+    try {
+      const response = await axios.post<{ user: User; token: string }>(
+        `${API_URL}/login`,
+        {
+          username: name,
+          password,
+        }
+      );
+      setUserId(response.data.user._id);
+      localStorage.setItem("token", response.data.token.toString());
       setShowModal(false);
     } catch (error) {
       console.error("Error creating user:", error);
@@ -121,6 +145,7 @@ const App: React.FC = () => {
       const response = await axios.post<Task>(`${API_URL}/tasks`, {
         userId,
         task: newTask,
+        token: localStorage.getItem("token"),
       });
       setTasks([...tasks, response.data]);
       setNewTask({
@@ -142,6 +167,7 @@ const App: React.FC = () => {
       }>(`${API_URL}/availability`, {
         userId,
         slots: availability,
+        token: localStorage.getItem("token"),
       });
       setAppointmentLink(`${window.location.origin}/schedule/${userId}`);
       setShowAvailabilityModal(false);
@@ -205,7 +231,7 @@ const App: React.FC = () => {
             {userId ? (
               <>
                 <h2>Add Task</h2>
-                <form>
+                <form onSubmit={handleTaskSubmit}>
                   <input
                     type="text"
                     placeholder="Task title"
@@ -214,9 +240,11 @@ const App: React.FC = () => {
                       setNewTask({ ...newTask, title: e.target.value })
                     }
                     className="border border-gray-400 p-2 w-full rounded-lg my-4"
+                    required
                   />
                   <div className="flex w-full space-x-2">
                     <button
+                      type="button"
                       className={`bg-gray-100 rounded-md hover:bg-gray-200 p-2 w-full`}
                       onClick={() => setShowModal(false)}
                     >
@@ -224,8 +252,8 @@ const App: React.FC = () => {
                     </button>
 
                     <button
+                      type="submit"
                       className={`bg-blue-400 rounded-md hover:bg-blue-500 p-2 text-white w-full`}
-                      onClick={handleTaskSubmit}
                     >
                       Submit
                     </button>
@@ -234,19 +262,39 @@ const App: React.FC = () => {
               </>
             ) : (
               <>
-                <h2>Enter Your Name</h2>
+                {/* <h2 className="text-2xl font-semibold mb-3">Register Now!</h2> */}
+                <label htmlFor="name">Name</label>
                 <input
                   type="text"
+                  id="name"
+                  placeholder="Name"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  className="border border-gray-400 p-2 w-full rounded-lg my-4"
+                  className="border border-gray-400 p-2 w-full rounded-lg my-2"
                 />
-                <button
-                  className={`bg-blue-400 rounded-md hover:bg-blue-500 p-2 text-white w-full`}
-                  onClick={handleNameSubmit}
-                >
-                  Submit
-                </button>
+                <label htmlFor="password">Password</label>
+                <input
+                  type="password"
+                  id="password"
+                  placeholder="Password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="border border-gray-400 p-2 w-full rounded-lg my-2"
+                />
+                <div className="flex space-x-2 w-full">
+                  <button
+                    className={`mt-2 bg-gray-100 rounded-md hover:bg-gray-200 p-2 w-full`}
+                    onClick={handleLoginSubmit}
+                  >
+                    Login
+                  </button>
+                  <button
+                    className={`mt-2 bg-blue-400 rounded-md hover:bg-blue-500 p-2 text-white w-full`}
+                    onClick={handleRegisterSubmit}
+                  >
+                    Register
+                  </button>
+                </div>
               </>
             )}
           </div>
@@ -292,7 +340,12 @@ const App: React.FC = () => {
       {appointmentLink && (
         <div className="flex space-x-2 py-3">
           <h2>Share this link to schedule an appointment:</h2>
-          <a href={appointmentLink} className="text-blue-500 underline underline-offset-2">{appointmentLink}</a>
+          <a
+            href={appointmentLink}
+            className="text-blue-500 underline underline-offset-2"
+          >
+            {appointmentLink}
+          </a>
         </div>
       )}
 

@@ -80,7 +80,9 @@ const Schedule: React.FC = () => {
 
   const createUser = async () => {
     try {
-      const response = await axios.post<User>(`${API_URL}/users`, { name });
+      const response = await axios.post<User>(`${API_URL}/random-user`, {
+        name,
+      });
       localStorage.setItem("userId", response.data.id.toString());
       return response.data.id;
     } catch (error) {
